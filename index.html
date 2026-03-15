@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML Clustering Visualiser — Priyank Dhandhania</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a0f;--surface:#111118;--border:#1e1e2e;
+  --purple:#a78bfa;--pink:#f472b6;--teal:#34d399;
+  --amber:#fbbf24;--blue:#60a5fa;--red:#f87171;
+  --text:#f1f5f9;--muted:#64748b;
+}
+body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+/* Header */
+.header{padding:12px 24px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:20px;flex-shrink:0}
+.logo{font-family:'Space Mono',monospace;font-size:.85rem;font-weight:700;
+  color:var(--purple);letter-spacing:.05em}
+.header-title{font-size:.75rem;color:var(--muted)}
+.tabs{display:flex;gap:4px;margin-left:auto}
+.tab{padding:6px 14px;background:none;border:1px solid var(--border);
+  color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:.65rem;
+  cursor:pointer;transition:all .15s;letter-spacing:.05em}
+.tab.active{background:var(--purple);color:#fff;border-color:var(--purple)}
+/* Main layout */
+.body{display:flex;flex:1;overflow:hidden}
+/* Controls */
+.controls{width:220px;flex-shrink:0;border-right:1px solid var(--border);
+  padding:16px;overflow-y:auto;background:var(--surface)}
+.ctrl-sec{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:.15em;
+  color:var(--muted);text-transform:uppercase;margin:16px 0 8px}
+.ctrl-sec:first-child{margin-top:0}
+.sl-row{margin-bottom:10px}
+.sl-row label{font-size:.62rem;color:var(--text);display:flex;justify-content:space-between;margin-bottom:3px}
+.sl-row label span{color:var(--purple);font-family:'Space Mono',monospace}
+input[type=range]{width:100%;accent-color:var(--purple);cursor:pointer}
+.btn{width:100%;padding:8px;background:none;border:1px solid var(--border);
+  color:var(--muted);font-family:'Space Mono',monospace;font-size:.6rem;
+  letter-spacing:.08em;cursor:pointer;transition:all .2s;text-transform:uppercase;margin-bottom:5px}
+.btn:hover{border-color:var(--purple);color:var(--purple)}
+.btn.active-algo{border-color:var(--purple);color:var(--purple);background:rgba(167,139,250,.08)}
+.radio-group{display:flex;flex-direction:column;gap:4px}
+.radio-btn{padding:6px 10px;border:1px solid var(--border);font-size:.62rem;
+  color:var(--muted);cursor:pointer;transition:all .15s;text-align:left;background:none;
+  font-family:'Space Grotesk',sans-serif;letter-spacing:.03em}
+.radio-btn.sel{border-color:var(--teal);color:var(--teal);background:rgba(52,211,153,.06)}
+/* Canvas area */
+.canvas-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+canvas{display:block}
+/* Info panel */
+.info-strip{border-top:1px solid var(--border);padding:10px 20px;
+  display:flex;gap:24px;align-items:center;background:var(--surface);flex-shrink:0}
+.metric{display:flex;flex-direction:column;align-items:center}
+.metric-val{font-family:'Space Mono',monospace;font-size:.9rem;font-weight:700;color:var(--teal)}
+.metric-label{font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+.algo-badge{padding:4px 10px;border:1px solid;font-size:.6rem;letter-spacing:.08em;
+  font-family:'Space Mono',monospace;border-radius:2px}
+/* Tooltip */
+#tip{position:absolute;z-index:10;background:rgba(17,17,24,.95);
+  border:1px solid var(--purple);padding:8px 12px;font-size:.62rem;
+  pointer-events:none;display:none;line-height:1.6;font-family:'Space Mono',monospace}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">CLUSTER.VIZ</div>
+  <div class="header-title">Unsupervised Learning · Algorithm Comparison · Built by Priyank Dhandhania, KIIT</div>
+  <div class="tabs">
+    <button class="tab active" onclick="setMode('sandbox')">Sandbox</button>
+    <button class="tab" onclick="setMode('compare')">Compare Algorithms</button>
+    <button class="tab" onclick="setMode('drdo')">DRDO Context</button>
+  </div>
+</div>
+
+<div class="body">
+<div class="controls">
+  <div class="ctrl-sec">Algorithm</div>
+  <div class="radio-group" id="algo-group">
+    <button class="radio-btn sel" onclick="setAlgo('kmeans')">K-Means</button>
+    <button class="radio-btn" onclick="setAlgo('dbscan')">DBSCAN</button>
+    <button class="radio-btn" onclick="setAlgo('gmm')">GMM (EM)</button>
+    <button class="radio-btn" onclick="setAlgo('geometric')">Geometric (DRDO)</button>
+  </div>
+
+  <div class="ctrl-sec">Data Shape</div>
+  <div class="radio-group" id="shape-group">
+    <button class="radio-btn sel" onclick="setShape('blobs')">Gaussian Blobs</button>
+    <button class="radio-btn" onclick="setShape('rings')">Concentric Rings</button>
+    <button class="radio-btn" onclick="setShape('moons')">Half Moons</button>
+    <button class="radio-btn" onclick="setShape('sensor')">Sensor Array (DRDO)</button>
+  </div>
+
+  <div class="ctrl-sec">Parameters</div>
+  <div class="sl-row">
+    <label>Points <span id="lbl-n">200</span></label>
+    <input type="range" id="sl-n" min="50" max="500" value="200" step="10">
+  </div>
+  <div class="sl-row">
+    <label>Clusters k <span id="lbl-k">3</span></label>
+    <input type="range" id="sl-k" min="2" max="8" value="3">
+  </div>
+  <div class="sl-row" id="eps-row">
+    <label>Noise σ <span id="lbl-eps">0.08</span></label>
+    <input type="range" id="sl-eps" min="0.02" max="0.30" value="0.08" step="0.01">
+  </div>
+  <div class="sl-row" id="speed-row">
+    <label>Anim. speed <span id="lbl-speed">3</span></label>
+    <input type="range" id="sl-speed" min="1" max="10" value="3">
+  </div>
+
+  <div class="ctrl-sec">Actions</div>
+  <button class="btn" id="btn-run" onclick="runClustering()">▶ Run / Step</button>
+  <button class="btn" onclick="generateData()">⊕ New Data</button>
+  <button class="btn" onclick="clearCanvas()">✕ Clear</button>
+
+  <div class="ctrl-sec" style="margin-top:20px">Metrics</div>
+  <div style="font-size:.62rem;color:var(--muted);line-height:1.8" id="metrics-detail">
+    Run algorithm to see metrics.
+  </div>
+</div>
+
+<div class="canvas-area">
+  <canvas id="cv"></canvas>
+  <div id="tip"></div>
+</div>
+</div>
+
+<div class="info-strip">
+  <div class="metric"><div class="metric-val" id="m-iter">0</div><div class="metric-label">Iterations</div></div>
+  <div class="metric"><div class="metric-val" id="m-clusters">—</div><div class="metric-label">Clusters</div></div>
+  <div class="metric"><div class="metric-val" id="m-inertia">—</div><div class="metric-label">Inertia</div></div>
+  <div class="metric"><div class="metric-val" id="m-converged">—</div><div class="metric-label">Converged</div></div>
+  <div class="metric"><div class="metric-val" id="m-time">—</div><div class="metric-label">CPU (ms)</div></div>
+  <div style="margin-left:auto">
+    <span class="algo-badge" id="algo-badge" style="border-color:var(--purple);color:var(--purple)">K-MEANS</span>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const COLORS = ['#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#fb923c','#a3e635'];
+
+let W, H;
+function resize(){
+  const area = cv.parentElement;
+  W = cv.width = area.clientWidth;
+  H = cv.height = area.clientHeight;
+}
+window.addEventListener('resize', ()=>{resize();draw();});
+resize();
+
+let mode='sandbox', algo='kmeans', shape='blobs';
+let points=[], labels=[], centroids=[], step=0, animating=false;
+let iterCount=0, inertia=0, converged=false;
+
+// ── DATA GENERATION ───────────────────────────────────────────────────────────
+function generateData(){
+  const n = +document.getElementById('sl-n').value;
+  const k = +document.getElementById('sl-k').value;
+  const sigma = +document.getElementById('sl-eps').value;
+  points=[]; labels=[];
+  step=0; iterCount=0; converged=false;
+  centroids=[];
+
+  if(shape==='blobs'){
+    const centers=[];
+    for(let i=0;i<k;i++) centers.push([0.15+Math.random()*0.7, 0.15+Math.random()*0.7]);
+    for(let i=0;i<n;i++){
+      const c=centers[Math.floor(Math.random()*k)];
+      points.push([c[0]+randn()*sigma, c[1]+randn()*sigma]);
+      labels.push(-1);
+    }
+  } else if(shape==='rings'){
+    for(let i=0;i<n;i++){
+      const ring=Math.floor(Math.random()*k);
+      const r=(ring+1)/(k+1)*0.4;
+      const ang=Math.random()*Math.PI*2;
+      points.push([0.5+r*Math.cos(ang)+randn()*sigma*0.5, 0.5+r*Math.sin(ang)+randn()*sigma*0.5]);
+      labels.push(-1);
+    }
+  } else if(shape==='moons'){
+    for(let i=0;i<n;i++){
+      const moon=i<n/2?0:1;
+      const ang=(i/(n/2))*Math.PI;
+      const x=moon===0?Math.cos(ang)*0.35+0.3:Math.cos(ang+Math.PI)*0.35+0.7;
+      const y=moon===0?Math.sin(ang)*0.25+0.4:Math.sin(ang+Math.PI)*0.25+0.6;
+      points.push([x+randn()*sigma*0.5, y+randn()*sigma*0.5]);
+      labels.push(-1);
+    }
+  } else if(shape==='sensor'){
+    // Circular sensor array with target clusters — DRDO style
+    const nSensors=k+2;
+    const nTargets=k;
+    const sensorPos=[];
+    for(let i=0;i<nSensors;i++){
+      const a=(i/nSensors)*Math.PI*2;
+      sensorPos.push([0.5+0.4*Math.cos(a), 0.5+0.4*Math.sin(a)]);
+    }
+    const targetPos=[];
+    for(let i=0;i<nTargets;i++) targetPos.push([0.2+Math.random()*0.6, 0.2+Math.random()*0.6]);
+    // Generate LOS intersection points
+    for(let i=0;i<n;i++){
+      const tgt=targetPos[Math.floor(Math.random()*nTargets)];
+      points.push([tgt[0]+randn()*sigma, tgt[1]+randn()*sigma]);
+      labels.push(-1);
+    }
+    // Add false alarms
+    for(let i=0;i<Math.floor(n*0.1);i++){
+      points.push([Math.random(), Math.random()]);
+      labels.push(-1);
+    }
+  }
+
+  draw();
+  updateMetrics();
+}
+
+function randn(){
+  let u=0,v=0;
+  while(u===0)u=Math.random();
+  while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+// ── ALGORITHMS ────────────────────────────────────────────────────────────────
+function runClustering(){
+  const k = +document.getElementById('sl-k').value;
+  const t0=performance.now();
+  if(algo==='kmeans') runKMeans(k);
+  else if(algo==='dbscan') runDBSCAN(k);
+  else if(algo==='gmm') runGMM(k);
+  else if(algo==='geometric') runGeometric(k);
+  const t1=performance.now();
+  document.getElementById('m-time').textContent=(t1-t0).toFixed(1);
+  draw();
+  updateMetrics();
+}
+
+function runKMeans(k){
+  if(step===0||centroids.length===0){
+    // Init centroids randomly from points
+    const idx=[];
+    while(idx.length<k){const r=Math.floor(Math.random()*points.length);if(!idx.includes(r))idx.push(r);}
+    centroids=idx.map(i=>[...points[i]]);
+    step=1;
+  } else {
+    // Assign step
+    let changed=false;
+    points.forEach((p,i)=>{
+      let best=0,bestD=Infinity;
+      centroids.forEach((c,ci)=>{const d=dist2(p,c);if(d<bestD){bestD=d;best=ci;}});
+      if(labels[i]!==best){changed=true;}
+      labels[i]=best;
+    });
+    // Update centroids
+    const newC=centroids.map(()=>[0,0]);
+    const counts=centroids.map(()=>0);
+    points.forEach((p,i)=>{newC[labels[i]][0]+=p[0];newC[labels[i]][1]+=p[1];counts[labels[i]]++;});
+    centroids=newC.map((c,i)=>counts[i]>0?[c[0]/counts[i],c[1]/counts[i]]:centroids[i]);
+    iterCount++;
+    if(!changed){converged=true;step=0;}
+  }
+  // Inertia
+  inertia=points.reduce((s,p,i)=>{const l=labels[i];return s+(l>=0&&centroids[l]?dist2(p,centroids[l]):0);},0);
+}
+
+function runDBSCAN(k){
+  const eps=+document.getElementById('sl-eps').value*0.5;
+  const minPts=5;
+  // reset labels to noise
+  for(let i=0;i<points.length;i++) labels[i]=-1;
+  let cluster=0;
+  points.forEach((p,i)=>{
+    if(labels[i]!==-1)return;
+    const neighbors=rangeQuery(i,eps);
+    if(neighbors.length<minPts)return; // noise
+    labels[i]=cluster%COLORS.length;
+    const queue=[...neighbors];
+    while(queue.length>0){
+      const q=queue.pop();
+      if(labels[q]===-1){
+        labels[q]=cluster%COLORS.length;
+        const n2=rangeQuery(q,eps);
+        if(n2.length>=minPts)queue.push(...n2.filter(x=>labels[x]===-1));
+      }
+    }
+    cluster++;
+  });
+  converged=true; iterCount=1;
+  centroids=[];
+  for(let c=0;c<cluster;c++){
+    const pts=points.filter((_,i)=>labels[i]===c);
+    if(pts.length>0) centroids.push([pts.reduce((s,p)=>s+p[0],0)/pts.length, pts.reduce((s,p)=>s+p[1],0)/pts.length]);
+  }
+}
+
+function rangeQuery(i,eps){
+  return points.reduce((acc,_,j)=>{if(j!==i&&Math.sqrt(dist2(points[i],points[j]))<eps)acc.push(j);return acc;},[]);
+}
+
+function runGMM(k){
+  // Simplified EM-style: soft assignment then update
+  if(step===0||centroids.length===0){
+    const idx=[];
+    while(idx.length<k){const r=Math.floor(Math.random()*points.length);if(!idx.includes(r))idx.push(r);}
+    centroids=idx.map(i=>[...points[i]]);
+    step=1;
+  } else {
+    // E-step: soft responsibilities
+    const sigma=0.08;
+    const resp=points.map(p=>{
+      const ws=centroids.map(c=>Math.exp(-dist2(p,c)/(2*sigma*sigma)));
+      const tot=ws.reduce((a,b)=>a+b,1e-10);
+      return ws.map(w=>w/tot);
+    });
+    // M-step
+    centroids=centroids.map((_,ci)=>{
+      const tw=resp.reduce((s,r)=>s+r[ci],0);
+      const mx=resp.reduce((s,r,i)=>s+r[ci]*points[i][0],0)/tw;
+      const my=resp.reduce((s,r,i)=>s+r[ci]*points[i][1],0)/tw;
+      return [mx,my];
+    });
+    // Hard assignment for coloring
+    resp.forEach((r,i)=>{labels[i]=r.indexOf(Math.max(...r));});
+    iterCount++;
+    if(iterCount>20)converged=true;
+  }
+}
+
+function runGeometric(k){
+  // Geometric clustering (simplified DRDO approach)
+  // Uses proximity-based clustering with range tolerance
+  const tol=+document.getElementById('sl-eps').value*0.8;
+  const clusters=[];
+  points.forEach((p,i)=>{
+    let placed=false;
+    for(const cl of clusters){
+      const d=Math.sqrt(dist2(p,cl.center));
+      if(d<tol){
+        cl.pts.push(i);
+        cl.center=[(cl.center[0]*(cl.pts.length-1)+p[0])/cl.pts.length,
+                   (cl.center[1]*(cl.pts.length-1)+p[1])/cl.pts.length];
+        placed=true;break;
+      }
+    }
+    if(!placed)clusters.push({center:[...p],pts:[i],intensity:1});
+  });
+  clusters.forEach(c=>c.intensity=c.pts.length);
+  clusters.sort((a,b)=>b.intensity-a.intensity);
+  const maxInt=clusters[0]?.intensity||1;
+  const good=clusters.filter(c=>c.intensity>maxInt*0.15);
+  labels=new Array(points.length).fill(k); // noise = last color
+  good.slice(0,k).forEach((cl,ci)=>cl.pts.forEach(i=>labels[i]=ci));
+  centroids=good.slice(0,k).map(c=>c.center);
+  converged=true; iterCount=1;
+}
+
+function dist2(a,b){return(a[0]-b[0])**2+(a[1]-b[1])**2;}
+
+// ── DRAWING ───────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // Grid
+  ctx.strokeStyle='rgba(30,30,46,.6)';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=W/10){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=H/10){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // Voronoi-like cluster background
+  if(centroids.length>0 && mode!=='drdo'){
+    try {
+      const img=ctx.createImageData(W,H);
+      for(let px=0;px<W;px+=4){
+        for(let py=0;py<H;py+=4){
+          const p=[px/W,py/H];
+          let best=0,bestD=Infinity;
+          centroids.forEach((c,ci)=>{if(c&&c[0]!=null){const d=dist2(p,c);if(d<bestD){bestD=d;best=ci;}}});
+          const col=hexToRgb(COLORS[best%COLORS.length]);
+          for(let dx=0;dx<4;dx++) for(let dy=0;dy<4;dy++){
+            const idx=((py+dy)*W+(px+dx))*4;
+            if(idx+3<img.data.length){img.data[idx]=col[0];img.data[idx+1]=col[1];img.data[idx+2]=col[2];img.data[idx+3]=20;}
+          }
+        }
+      }
+      ctx.putImageData(img,0,0);
+    } catch(e) { /* skip voronoi if data inconsistent */ }
+  }
+
+  // DRDO mode: draw LOS lines
+  if(mode==='drdo'&&centroids.length>0){
+    const sensors=[];
+    const nS=+document.getElementById('sl-k').value+2;
+    for(let i=0;i<nS;i++){
+      const a=(i/nS)*Math.PI*2;
+      sensors.push([0.5+0.4*Math.cos(a), 0.5+0.4*Math.sin(a)]);
+    }
+    sensors.forEach(s=>{
+      centroids.forEach(c=>{
+        ctx.beginPath();ctx.strokeStyle='rgba(96,165,250,.15)';ctx.lineWidth=1;
+        ctx.moveTo(s[0]*W,s[1]*H);ctx.lineTo(c[0]*W,c[1]*H);ctx.stroke();
+      });
+      ctx.beginPath();ctx.fillStyle='#3b82f6';
+      ctx.arc(s[0]*W,s[1]*H,7,0,Math.PI*2);ctx.fill();
+    });
+  }
+
+  // Points
+  points.forEach((p,i)=>{
+    const lbl=labels[i];
+    const col=lbl>=0&&lbl<COLORS.length?COLORS[lbl%COLORS.length]:'#334155';
+    ctx.beginPath();ctx.fillStyle=col;ctx.globalAlpha=lbl>=0?0.85:0.25;
+    ctx.arc(p[0]*W,p[1]*H,4,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  });
+
+  // Centroids
+  centroids.forEach((c,i)=>{
+    if(!c||c[0]==null)return;
+    ctx.beginPath();ctx.fillStyle=COLORS[i%COLORS.length];
+    ctx.arc(c[0]*W,c[1]*H,10,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.strokeStyle='#fff';ctx.lineWidth=2;
+    ctx.arc(c[0]*W,c[1]*H,10,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.strokeStyle=COLORS[i%COLORS.length];ctx.lineWidth=1;ctx.globalAlpha=0.4;
+    ctx.arc(c[0]*W,c[1]*H,18,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  });
+}
+
+function hexToRgb(hex){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return[r,g,b];
+}
+
+function updateMetrics(){
+  document.getElementById('m-iter').textContent=iterCount;
+  document.getElementById('m-clusters').textContent=centroids.length||'—';
+  document.getElementById('m-inertia').textContent=inertia>0?inertia.toFixed(0):'—';
+  document.getElementById('m-converged').textContent=converged?'YES':'NO';
+  const safeLabels=labels.slice(0,points.length);
+  const labeled=safeLabels.filter(l=>l>=0).length;
+  document.getElementById('metrics-detail').innerHTML=
+    `<div style="margin-bottom:6px">Points: ${points.length}</div>
+     <div style="margin-bottom:6px">Assigned: ${labeled} (${points.length>0?(labeled/points.length*100).toFixed(0):0}%)</div>
+     <div style="margin-bottom:6px">Noise: ${labels.filter(l=>l<0).length}</div>
+     <div>Centroids: ${centroids.length}</div>`;
+}
+
+function clearCanvas(){
+  points=[];labels=[];centroids=[];step=0;iterCount=0;converged=false;
+  ctx.clearRect(0,0,W,H);
+  updateMetrics();
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+function setAlgo(a){
+  algo=a;
+  document.querySelectorAll('#algo-group .radio-btn').forEach(b=>b.classList.remove('sel'));
+  event.target.classList.add('sel');
+  const labels_={kmeans:'K-MEANS',dbscan:'DBSCAN',gmm:'GMM / EM',geometric:'GEOMETRIC'};
+  const badge=document.getElementById('algo-badge');
+  badge.textContent=labels_[a];
+  const colors={kmeans:'var(--purple)',dbscan:'var(--teal)',gmm:'var(--pink)',geometric:'var(--amber)'};
+  badge.style.borderColor=badge.style.color=colors[a];
+  step=0; centroids=[];
+  // Reset labels safely to match current points
+  labels=new Array(points.length).fill(-1);
+}
+function setShape(s){
+  shape=s;
+  document.querySelectorAll('#shape-group .radio-btn').forEach(b=>b.classList.remove('sel'));
+  event.target.classList.add('sel');
+  if(s==='sensor')setMode('drdo');
+  generateData();
+}
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.tab:nth-child(${m==='sandbox'?1:m==='compare'?2:3})`).classList.add('active');
+  if(m==='compare') runCompare();
+  else if(m==='drdo'){shape='sensor';generateData();}
+}
+
+function runCompare(){
+  // Run all 4 algos and show comparison
+  const savedAlgo=algo;
+  const k=+document.getElementById('sl-k').value;
+  const results=[];
+  ['kmeans','gmm','dbscan','geometric'].forEach(a=>{
+    algo=a; step=0; centroids=[]; labels=new Array(points.length).fill(-1);
+    const t0=performance.now();
+    for(let i=0;i<10;i++){runClustering();}
+    results.push({algo:a,time:(performance.now()-t0).toFixed(1),clusters:centroids.length});
+  });
+  algo=savedAlgo;
+  draw();
+}
+
+// Sliders
+['sl-n','sl-k','sl-eps','sl-speed'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('input',e=>{
+    const lbl={} ;
+    lbl['sl-n']='lbl-n';lbl['sl-k']='lbl-k';lbl['sl-eps']='lbl-eps';lbl['sl-speed']='lbl-speed';
+    document.getElementById(lbl[id]).textContent=e.target.value;
+  });
+});
+
+// Click to add point
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect();
+  points.push([(e.clientX-r.left)/W,(e.clientY-r.top)/H]);
+  labels.push(-1);
+  draw();
+});
+
+// Init
+generateData();
+setInterval(()=>{if(animating){runClustering();draw();}},300);
+</script>
+</body>
+</html>
